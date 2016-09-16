@@ -55,4 +55,4 @@ class Cues {
 
 }
 
-module.exports = cues;
+module.exports = Cues;
