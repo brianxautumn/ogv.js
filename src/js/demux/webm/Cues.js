@@ -3,7 +3,6 @@
  * @classdesc This class keeps track of keyframes for seeking
  * 
  */
-
 class Cues {
 
     constructor(dataView) {
