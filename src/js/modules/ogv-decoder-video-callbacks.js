@@ -56,6 +56,19 @@ mergeInto(LibraryManager.library, {
 			hdec: hdec,
 			vdec: vdec
 		};
+                
+                console.warn({
+			bytesY: bytesY,
+			bytesCb: bytesCb,
+			bytesCr: bytesCr,
+			strideY: strideY,
+			strideCb: strideCb,
+			strideCr: strideCr,
+			width: width,
+			height: height,
+			hdec: hdec,
+			vdec: vdec
+		});
 	}
 
 });
