@@ -1721,6 +1721,11 @@ var OGVPlayer = function(options) {
 	self.fastSeek = function(seekToTime) {
 		self.currentTime = +seekToTime;
 	};
+        
+        self.scrubStart = function(){
+            console.log("player scrub start");
+            console.warn(codec);
+        };
 
 	/**
 	 * HTMLMediaElement src property

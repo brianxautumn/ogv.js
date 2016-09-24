@@ -692,8 +692,8 @@ class OGVDemuxerWebM {
     /*
      * Trigger the beginnign of a scrub event
      */
-    onScrubStart(timeSeconds, callback){
-        
+    scrubStart(timeSeconds, callback){
+        console.log("scrub start");
     }
     
     /**
@@ -704,6 +704,7 @@ class OGVDemuxerWebM {
      * @param {function} callback
      */
     onScrub(timeSeconds, callback){
+        console.log("scrubing");
     }
     
     /*
@@ -712,7 +713,7 @@ class OGVDemuxerWebM {
      * @returns {Number}
      */
     onScrubEnd(timeSeconds, callback){
-        
+        console.warn("scrub end ");
     }
     
     /**

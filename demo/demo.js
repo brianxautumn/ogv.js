@@ -1520,6 +1520,9 @@
 				seekTarget = player.currentTime;
 				initialThumbFraction = seekTarget / player.duration;
 				initialThumbX = event.clientX;
+                                player.scrubStart();
+                                
+         
 
 				var onmove = function(event) {
 					var bar = document.querySelector('#progress-total'),
@@ -1530,6 +1533,7 @@
 					updateProgress();
 					event.preventDefault();
 				};
+                                
 				var onmouseup = function(event) {
 					var bar = document.querySelector('#progress-total'),
 						dx = event.clientX - initialThumbX,
@@ -1544,6 +1548,7 @@
 					document.removeEventListener('mouseup', onmouseup);
 					event.preventDefault();
 				};
+                                
 				document.addEventListener('mousemove', onmove);
 				document.addEventListener('mouseup', onmouseup);
 			}
