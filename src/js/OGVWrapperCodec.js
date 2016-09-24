@@ -10,471 +10,459 @@
 var OGVLoader = require("./OGVLoader.js");
 var OGVDemuxerWebM = require("./demux/webm/WebmDemuxer.js");
 
-var OGVWrapperCodec = (function(options) {
-	options = options || {};
-	var self = this,
-		suffix = '?version=' + encodeURIComponent(__OGV_FULL_VERSION__),
-		base = (typeof options.base === 'string') ? (options.base + '/') : '',
-		type = (typeof options.type === 'string') ? options.type : 'video/ogg',
-		processing = false,
-		demuxer = null,
-		videoDecoder = null,
-		audioDecoder = null,
-		flushIter = 0;
 
-	// Wrapper for callbacks to drop them after a flush
-	function flushSafe(func) {
-		var savedFlushIter = flushIter;
-		return function(arg) {
-			if (flushIter <= savedFlushIter) {
-				func(arg);
-			}
-		};
-	}
+var audioClassMap = {
+    vorbis: 'OGVDecoderAudioVorbis',
+    opus: 'OGVDecoderAudioOpus'
+};
 
-	var loadedMetadata = false;
-	Object.defineProperty(self, 'loadedMetadata', {
-		get: function() {
-			return loadedMetadata;
-		}
-	});
+var videoClassMap = {
+    theora: 'OGVDecoderVideoTheora',
+    vp8: 'OGVDecoderVideoVP8',
+    vp9: 'OGVDecoderVideoVP9'
+};
 
-	Object.defineProperty(self, 'processing', {
-		get: function() {
-			return processing/*
-				|| (videoDecoder && videoDecoder.processing)
-				|| (audioDecoder && audioDecoder.processing)*/;
-		}
-	});
+class OGVWrapperCodec {
 
-	Object.defineProperty(self, 'duration', {
-		get: function() {
-			if (self.loadedMetadata) {
-				return demuxer.duration;
-			} else {
-				return NaN;
-			}
-		}
-	});
+    constructor(options) {
+        this.options = options || {};
+        this.suffix = '?version=' + encodeURIComponent(__OGV_FULL_VERSION__);
+        this.base = (typeof options.base === 'string') ? (options.base + '/') : '';
+        this.type = (typeof options.type === 'string') ? options.type : 'video/ogg';
+        this.processing = false,
+                this.demuxer = null;
+        this.videoDecoder = null;
+        this.audioDecoder = null;
+        this.flushIter = 0;
+        this.loadedMetadata = false;
+        this.loadedDemuxerMetadata = false;
+        this.loadedAudioMetadata = false;
+        this.loadedVideoMetadata = false;
+        this.loadedAllMetadata = false;
+        this.onseek = null;
 
-	Object.defineProperty(self, 'hasAudio', {
-		get: function() {
-			return self.loadedMetadata && !!audioDecoder;
-		}
-	});
+        Object.defineProperty(this, 'duration', {
+            get: function () {
+                if (this.loadedMetadata) {
+                    return this.demuxer.duration;
+                } else {
+                    return NaN;
+                }
+            }
+        });
 
-	Object.defineProperty(self, 'audioReady', {
-		get: function() {
-			return self.hasAudio && demuxer.audioReady;
-		}
-	});
+        Object.defineProperty(this, 'hasAudio', {
+            get: function () {
+                return this.loadedMetadata && !!this.audioDecoder;
+            }
+        });
 
-	Object.defineProperty(self, 'audioTimestamp', {
-		get: function() {
-			return demuxer.audioTimestamp;
-		}
-	});
+        Object.defineProperty(this, 'audioReady', {
+            get: function () {
+                return this.hasAudio && this.demuxer.audioReady;
+            }
+        });
 
-	Object.defineProperty(self, 'audioFormat', {
-		get: function() {
-			if (self.hasAudio) {
-				return audioDecoder.audioFormat;
-			} else {
-				return null;
-			}
-		}
-	});
+        Object.defineProperty(this, 'audioTimestamp', {
+            get: function () {
+                return this.demuxer.audioTimestamp;
+            }
+        });
 
-	Object.defineProperty(self, 'audioBuffer', {
-		get: function() {
-			if (self.hasAudio) {
-				return audioDecoder.audioBuffer;
-			} else {
-				return null;
-			}
-		}
-	});
+        Object.defineProperty(this, 'audioFormat', {
+            get: function () {
+                if (this.hasAudio) {
+                    return this.audioDecoder.audioFormat;
+                } else {
+                    return null;
+                }
+            }
+        });
 
-	Object.defineProperty(self, 'hasVideo', {
-		get: function() {
-			return self.loadedMetadata && !!videoDecoder;
-		}
-	});
+        Object.defineProperty(this, 'audioBuffer', {
+            get: function () {
+                if (this.hasAudio) {
+                    return this.audioDecoder.audioBuffer;
+                } else {
+                    return null;
+                }
+            }
+        });
 
-	Object.defineProperty(self, 'frameReady', {
-		get: function() {
-			return self.hasVideo && demuxer.frameReady;
-		}
-	});
+        Object.defineProperty(this, 'hasVideo', {
+            get: function () {
+                return this.loadedMetadata && !!this.videoDecoder;
+            }
+        });
 
-	Object.defineProperty(self, 'frameTimestamp', {
-		get: function() {
-			return demuxer.frameTimestamp;
-		}
-	});
+        Object.defineProperty(this, 'frameReady', {
+            get: function () {
+                return this.hasVideo && this.demuxer.frameReady;
+            }
+        });
 
-	Object.defineProperty(self, 'keyframeTimestamp', {
-		get: function() {
-			return demuxer.keyframeTimestamp;
-		}
-	});
+        Object.defineProperty(this, 'frameTimestamp', {
+            get: function () {
+                return this.demuxer.frameTimestamp;
+            }
+        });
 
-	Object.defineProperty(self, 'videoFormat', {
-		get: function() {
-			if (self.hasVideo) {
-				return videoDecoder.videoFormat;
-			} else {
-				return null;
-			}
-		}
-	});
+        Object.defineProperty(this, 'keyframeTimestamp', {
+            get: function () {
+                return this.demuxer.keyframeTimestamp;
+            }
+        });
 
-	Object.defineProperty(self, 'frameBuffer', {
-		get: function() {
-			if (self.hasVideo) {
-				return videoDecoder.frameBuffer;
-			} else {
-				return null;
-			}
-		}
-	});
+        Object.defineProperty(this, 'videoFormat', {
+            get: function () {
+                if (this.hasVideo) {
+                    return this.videoDecoder.videoFormat;
+                } else {
+                    return null;
+                }
+            }
+        });
 
-	Object.defineProperty(self, 'seekable', {
-		get: function() {
-			return demuxer.seekable;
-		}
-	});
+        Object.defineProperty(this, 'frameBuffer', {
+            get: function () {
+                if (this.hasVideo) {
+                    return this.videoDecoder.frameBuffer;
+                } else {
+                    return null;
+                }
+            }
+        });
 
-	// - public methods
-	self.init = function(callback) {
-		var demuxerClassName;
-		if (options.type === 'video/webm') {
-			demuxerClassName = 'OGVDemuxerWebM';
-		} else {
-			demuxerClassName = 'OGVDemuxerOgg';
-		}
-		processing = true;
-                /**
-                 * Temp hack just to load the test javascript demuxer, need a better loader
-                 */
-                /*
-                if(demuxerClassName === 'OGVDemuxerWebM'){
-                    console.info("loading javascript demux");
-                    demuxer = new OGVDemuxerWebM();
-                    demuxer.onseek = function(offset) {
-				if (self.onseek) {
-					self.onseek(offset);
-				}
-		    };
-                    window.demuxer = demuxer;//testing only
-	            demuxer.init(function() {
-				processing = false;
-				callback();
-		    });
-                        
-                }else{
-                */
-                  OGVLoader.loadClass(demuxerClassName, function(demuxerClass) {
-			demuxer = new demuxerClass();
-			demuxer.onseek = function(offset) {
-				if (self.onseek) {
-					self.onseek(offset);
-				}
-			};
-			demuxer.init(function() {
-				processing = false;
-				callback();
-			});
-		});  
-                //}
-		
-	};
+        Object.defineProperty(this, 'seekable', {
+            get: function () {
+                return this.demuxer.seekable;
+            }
+        });
 
-	self.close = function() {
-		if (demuxer) {
-			demuxer.close();
-			demuxer = null;
-		}
-		if (videoDecoder) {
-			videoDecoder.close();
-			videoDecoder = null;
-		}
-		if (audioDecoder) {
-			audioDecoder.close();
-			audioDecoder = null;
-		}
-	};
+        Object.defineProperty(this, "demuxerCpuTime", {
+            get: function () {
+                if (this.demuxer) {
+                    return this.demuxer.cpuTime;
+                } else {
+                    return 0;
+                }
+            }
+        });
+        Object.defineProperty(this, "audioCpuTime", {
+            get: function () {
+                if (this.audioDecoder) {
+                    return this.audioDecoder.cpuTime;
+                } else {
+                    return 0;
+                }
+            }
+        });
+        Object.defineProperty(this, "videoCpuTime", {
+            get: function () {
+                if (this.videoDecoder) {
+                    return this.videoDecoder.cpuTime;
+                } else {
+                    return 0;
+                }
+            }
+        });
 
-	self.receiveInput = function(data, callback) {
-		demuxer.receiveInput(data, callback);
-	};
-
-	var audioClassMap = {
-		vorbis: 'OGVDecoderAudioVorbis',
-		opus: 'OGVDecoderAudioOpus'
-	};
-	function loadAudioCodec(callback) {
-            
-                  
-		if (demuxer.audioCodec) {
-                    //console.log(this);
-                    //throw "FORMAT";
-                    
-			var className = audioClassMap[demuxer.audioCodec];
-                        //console.log("got audio classname + " + className);
-			processing = true;
-			OGVLoader.loadClass(className, function(audioCodecClass) {
-				var audioOptions = {};
-                                //console.warn(demuxer.audioFormat);
-				if (demuxer.audioFormat) {
-					audioOptions.audioFormat = demuxer.audioFormat;
-				}
-				audioDecoder = new audioCodecClass(audioOptions);
-				audioDecoder.init(function() {
-					loadedAudioMetadata = audioDecoder.loadedMetadata;
-					processing = false;
-					callback();
-				});
-			}, {
-				worker: options.worker
-			});
-		} else {
-			callback();
-		}
-	}
-
-	var videoClassMap = {
-		theora: 'OGVDecoderVideoTheora',
-		vp8: 'OGVDecoderVideoVP8',
-		vp9: 'OGVDecoderVideoVP9'
-	};
-	function loadVideoCodec(callback) {
-		if (demuxer.videoCodec) {
-			var className = videoClassMap[demuxer.videoCodec];
-                        //console.log("got video classname + " + className);
-			processing = true;
-			OGVLoader.loadClass(className, function(videoCodecClass) {
-				var videoOptions = {};
-				if (demuxer.videoFormat) {
-					videoOptions.videoFormat = demuxer.videoFormat;
-				}
-				if (options.memoryLimit) {
-					videoOptions.memoryLimit = options.memoryLimit;
-				}
-				videoDecoder = new videoCodecClass(videoOptions);
-				videoDecoder.init(function() {
-					loadedVideoMetadata = videoDecoder.loadedMetadata;
-					processing = false;
-					callback();
-				});
-			}, {
-				worker: options.worker
-			});
-		} else {
-			callback();
-		}
-	}
-
-	var loadedDemuxerMetadata = false,
-		loadedAudioMetadata = false,
-		loadedVideoMetadata = false,
-		loadedAllMetadata = false;
-
-	self.process = function(callback) {
-		if (processing) {
-			throw new Error('reentrancy fail on OGVWrapperCodec.process');
-		}
-		processing = true;
-                //console.warn("process loop");
-		var videoPacketCount = demuxer.videoPackets.length,
-			audioPacketCount = demuxer.audioPackets.length,
-			start = (window.performance ? performance.now() : Date.now());
-		function finish(result) {
-			processing = false;
-			var delta = (window.performance ? performance.now() : Date.now()) - start;
-			if (delta > 8) {
-				console.log('slow demux in ' + delta + ' ms; ' +
-					(demuxer.videoPackets.length - videoPacketCount) + ' +video packets, ' +
-					(demuxer.audioPackets.length - audioPacketCount) + ' +audio packets');
-			}
-			//console.log('demux returned ' + (result ? 'true' : 'false') + '; ' + demuxer.videoPackets.length + '; ' + demuxer.audioPackets.length);
-			callback(result);
-		}
-
-		function doProcessData() {
-			videoPacketCount = demuxer.videoPackets.length,
-			audioPacketCount = demuxer.audioPackets.length,
-			start = (window.performance ? performance.now() : Date.now());
-			demuxer.process(finish);
-		}
-
-		if (demuxer.loadedMetadata && !loadedDemuxerMetadata) {
-
-			// Demuxer just reached its metadata. Load the relevant codecs!
-			loadAudioCodec(function() {
-				loadVideoCodec(function() {
-					loadedDemuxerMetadata = true;
-					loadedAudioMetadata = !audioDecoder;
-					loadedVideoMetadata = !videoDecoder;
-					loadedAllMetadata = loadedAudioMetadata && loadedVideoMetadata;
-					finish(true);
-				});
-			});
-
-		} else if (loadedDemuxerMetadata && !loadedAudioMetadata) {
-
-			if (audioDecoder.loadedMetadata) {
-
-				loadedAudioMetadata = true;
-				loadedAllMetadata = loadedAudioMetadata && loadedVideoMetadata;
-				finish(true);
-
-			} else if (demuxer.audioReady) {
-                            
-				demuxer.dequeueAudioPacket(function(packet) {
-					audioDecoder.processHeader(packet, function(ret) {
-						finish(true);
-					});
-				});
-
-			} else {
-
-				doProcessData();
-
-			}
-
-		} else if (loadedAudioMetadata && !loadedVideoMetadata) {
-
-			if (videoDecoder.loadedMetadata) {
-
-				loadedVideoMetadata = true;
-				loadedAllMetadata = loadedAudioMetadata && loadedVideoMetadata;
-				finish(true);
-
-			} else if (demuxer.frameReady) {
-
-				processing = true;
-				demuxer.dequeueVideoPacket(function(packet) {
-					videoDecoder.processHeader(packet, function() {
-						finish(true);
-					});
-				});
-
-			} else {
-
-				doProcessData();
-
-			}
-
-		} else if (loadedVideoMetadata && !self.loadedMetadata && loadedAllMetadata) {
-
-			// Ok we've found all the metadata there is. Enjoy.
-			loadedMetadata = true;
-			finish(true);
-
-		} else if (self.loadedMetadata && (!self.hasAudio || demuxer.audioReady) && (!self.hasVideo || demuxer.frameReady)) {
-
-			// Already queued up some packets. Go read them!
-			finish(true);
-
-		} else {
-
-			// We need to process more of the data we've already received,
-			// or ask for more if we ran out!
-			doProcessData();
-
-		}
-
-	};
-
-	self.decodeFrame = function(callback) {
-		var cb = flushSafe(callback),
-			timestamp = self.frameTimestamp,
-			keyframeTimestamp = self.keyframeTimestamp;
-		demuxer.dequeueVideoPacket(function(packet) {
-			videoDecoder.processFrame(packet, function(ok) {
-				// hack
-				if (videoDecoder.frameBuffer) {
-					videoDecoder.frameBuffer.timestamp = timestamp;
-					videoDecoder.frameBuffer.keyframeTimestamp = keyframeTimestamp;
-				}
-				cb(ok);
-			});
-		});
-	};
-
-	self.decodeAudio = function(callback) {
-		var cb = flushSafe(callback);
-		demuxer.dequeueAudioPacket(function(packet) {
-                        //Bug is here
-			audioDecoder.processAudio(packet, cb);
-		});
-	}
-
-	self.discardFrame = function(callback) {
-		demuxer.dequeueVideoPacket(function(packet) {
-			callback();
-		});
-	};
-
-	self.discardAudio = function(callback) {
-		demuxer.dequeueAudioPacket(function(packet) {
-			callback();
-		});
-	};
-
-	self.flush = function(callback) {
-		flushIter++;
-		demuxer.flush(callback);
-	};
-
-	self.getKeypointOffset = function(timeSeconds, callback) {
-		demuxer.getKeypointOffset(timeSeconds, callback);
-	};
-
-	self.seekToKeypoint = function(timeSeconds, callback) {
-		demuxer.seekToKeypoint(timeSeconds, flushSafe(callback));
-	}
-
-	self.onseek = null;
-        
-        /*
-         * Notify demuxer that scrubbing is complete, temp hack for now
-         * Change this to scrub.
+    }
+    // - public methods
+    init(callback) {
+        var demuxerClassName;
+        if (this.options.type === 'video/webm') {
+            this.demuxerClassName = 'OGVDemuxerWebM';
+        } else {
+            this.demuxerClassName = 'OGVDemuxerOgg';
+        }
+        this.processing = true;
+        /**
+         * Temp hack just to load the test javascript demuxer, need a better loader
          */
-        self.seekEnd = function(){
-            demuxer.onScrubEnd();
-        };
+        /*
+         if(demuxerClassName === 'OGVDemuxerWebM'){
+         console.info("loading javascript demux");
+         demuxer = new OGVDemuxerWebM();
+         demuxer.onseek = function(offset) {
+         if (this.onseek) {
+         this.onseek(offset);
+         }
+         };
+         window.demuxer = demuxer;//testing only
+         demuxer.init(function() {
+         processing = false;
+         callback();
+         });
+         
+         }else{
+         */
+        OGVLoader.loadClass(this.demuxerClassName, function (demuxerClass) {
+            this.demuxer = new demuxerClass();
+            this.demuxer.onseek = function (offset) {
+                if (this.onseek) {
+                    this.onseek(offset);
+                }
+            }.bind(this);
+            this.demuxer.init(function () {
+                this.processing = false;
+                callback();
+            }.bind(this));
+        }.bind(this));
+        //}
 
-	Object.defineProperty(self, "demuxerCpuTime", {
-		get: function() {
-			if (demuxer) {
-				return demuxer.cpuTime;
-			} else {
-				return 0;
-			}
-		}
-	});
-	Object.defineProperty(self, "audioCpuTime", {
-		get: function() {
-			if (audioDecoder) {
-				return audioDecoder.cpuTime;
-			} else {
-				return 0;
-			}
-		}
-	});
-	Object.defineProperty(self, "videoCpuTime", {
-		get: function() {
-			if (videoDecoder) {
-				return videoDecoder.cpuTime;
-			} else {
-				return 0;
-			}
-		}
-	});
+    }
 
-	return self;
-});
+    close() {
+        if (this.demuxer) {
+            this.demuxer.close();
+            this.demuxer = null;
+        }
+        if (this.videoDecoder) {
+            this.videoDecoder.close();
+            this.videoDecoder = null;
+        }
+        if (this.audioDecoder) {
+            this.audioDecoder.close();
+            this.audioDecoder = null;
+        }
+    }
+
+    receiveInput(data, callback) {
+        this.demuxer.receiveInput(data, callback);
+    }
+
+    loadAudioCodec(callback) {
+
+
+        if (this.demuxer.audioCodec) {
+            //console.log(this);
+            //throw "FORMAT";
+
+            var className = audioClassMap[this.demuxer.audioCodec];
+            //console.log("got audio classname + " + className);
+            this.processing = true;
+            OGVLoader.loadClass(className, function (audioCodecClass) {
+                var audioOptions = {};
+                //console.warn(demuxer.audioFormat);
+                if (this.demuxer.audioFormat) {
+                    audioOptions.audioFormat = this.demuxer.audioFormat;
+                }
+                this.audioDecoder = new audioCodecClass(audioOptions);
+                this.audioDecoder.init(function () {
+                    this.loadedAudioMetadata = this.audioDecoder.loadedMetadata;
+                    this.processing = false;
+                    callback();
+                }.bind(this));
+            }.bind(this), {
+                worker: this.options.worker
+            });
+        } else {
+            callback();
+        }
+    }
+
+    loadVideoCodec(callback) {
+        if (this.demuxer.videoCodec) {
+            var className = videoClassMap[this.demuxer.videoCodec];
+            //console.log("got video classname + " + className);
+            this.processing = true;
+            OGVLoader.loadClass(className, function (videoCodecClass) {
+                var videoOptions = {};
+                if (this.demuxer.videoFormat) {
+                    videoOptions.videoFormat = this.demuxer.videoFormat;
+                }
+                if (this.options.memoryLimit) {
+                    videoOptions.memoryLimit = this.options.memoryLimit;
+                }
+                this.videoDecoder = new videoCodecClass(videoOptions);
+                this.videoDecoder.init(function () {
+                    this.loadedVideoMetadata = this.videoDecoder.loadedMetadata;
+                    this.processing = false;
+                    callback();
+                }.bind(this));
+            }.bind(this), {
+                worker: this.options.worker
+            });
+        } else {
+            callback();
+        }
+    }
+
+    finish(result) {
+        this.processing = false;
+        var delta = (window.performance ? performance.now() : Date.now()) - this.start;
+        if (delta > 8) {
+            console.log('slow demux in ' + delta + ' ms; ' +
+                    (this.demuxer.videoPackets.length - this.videoPacketCount) + ' +video packets, ' +
+                    (this.demuxer.audioPackets.length - this.audioPacketCount) + ' +audio packets');
+        }
+        //console.log('demux returned ' + (result ? 'true' : 'false') + '; ' + demuxer.videoPackets.length + '; ' + demuxer.audioPackets.length);
+        this.callback(result);
+    }
+
+    doProcessData() {
+        this.videoPacketCount = this.demuxer.videoPackets.length,
+                this.audioPacketCount = this.demuxer.audioPackets.length,
+                this.start = (window.performance ? performance.now() : Date.now());
+        this.demuxer.process(this.finish.bind(this));
+    }
+
+    process(callback) {
+        this.callback = callback;
+        if (this.processing) {
+            throw new Error('reentrancy fail on OGVWrapperCodec.process');
+        }
+        this.processing = true;
+        //console.warn("process loop");
+        var videoPacketCount = this.demuxer.videoPackets.length;
+        this.audioPacketCount = this.demuxer.audioPackets.length;
+        this.start = (window.performance ? performance.now() : Date.now());
+
+
+        if (this.demuxer.loadedMetadata && !this.loadedDemuxerMetadata) {
+
+            // Demuxer just reached its metadata. Load the relevant codecs!
+            this.loadAudioCodec(function () {
+                this.loadVideoCodec(function () {
+                    this.loadedDemuxerMetadata = true;
+                    this.loadedAudioMetadata = !this.audioDecoder;
+                    this.loadedVideoMetadata = !this.videoDecoder;
+                    this.loadedAllMetadata = this.loadedAudioMetadata && this.loadedVideoMetadata;
+                    this.finish(true);
+                }.bind(this));
+            }.bind(this));
+
+        } else if (this.loadedDemuxerMetadata && !this.loadedAudioMetadata) {
+
+            if (this.audioDecoder.loadedMetadata) {
+
+                this.loadedAudioMetadata = true;
+                this.loadedAllMetadata = this.loadedAudioMetadata && this.loadedVideoMetadata;
+                this.finish(true);
+
+            } else if (this.demuxer.audioReady) {
+
+                this.demuxer.dequeueAudioPacket(function (packet) {
+                    this.audioDecoder.processHeader(packet, function (ret) {
+                        this.finish(true);
+                    }.bind(this));
+                }.bind(this));
+
+            } else {
+
+                this.doProcessData();
+
+            }
+
+        } else if (this.loadedAudioMetadata && !this.loadedVideoMetadata) {
+
+            if (this.videoDecoder.loadedMetadata) {
+
+                this.loadedVideoMetadata = true;
+                this.loadedAllMetadata = this.loadedAudioMetadata && this.loadedVideoMetadata;
+                this.finish(true);
+
+            } else if (this.demuxer.frameReady) {
+
+                this.processing = true;
+                this.demuxer.dequeueVideoPacket(function (packet) {
+                    this.videoDecoder.processHeader(packet, function () {
+                        this.finish(true);
+                    }.bind(this));
+                }.bind(this));
+
+            } else {
+
+                this.doProcessData();
+
+            }
+
+        } else if (this.loadedVideoMetadata && !this.loadedMetadata && this.loadedAllMetadata) {
+
+            // Ok we've found all the metadata there is. Enjoy.
+            this.loadedMetadata = true;
+            this.finish(true);
+
+        } else if (this.loadedMetadata && (!this.hasAudio || this.demuxer.audioReady) && (!this.hasVideo || this.demuxer.frameReady)) {
+
+            // Already queued up some packets. Go read them!
+            this.finish(true);
+
+        } else {
+
+            // We need to process more of the data we've already received,
+            // or ask for more if we ran out!
+            this.doProcessData();
+
+        }
+
+    }
+
+    decodeFrame(callback) {
+        var cb = this.flushSafe(callback);
+        this.timestamp = this.frameTimestamp;
+        this.demuxer.dequeueVideoPacket(function (packet) {
+            this.videoDecoder.processFrame(packet, function (ok) {
+                // hack
+                if (this.videoDecoder.frameBuffer) {
+                    this.videoDecoder.frameBuffer.timestamp = this.timestamp;
+                    this.videoDecoder.frameBuffer.keyframeTimestamp = this.keyframeTimestamp;
+                }
+                cb(ok);
+            }.bind(this));
+        }.bind(this));
+    }
+
+    decodeAudio(callback) {
+        var cb = this.flushSafe(callback);
+        this.demuxer.dequeueAudioPacket(function (packet) {
+
+            this.audioDecoder.processAudio(packet, cb);
+        }.bind(this));
+    }
+
+    discardFrame(callback) {
+        this.demuxer.dequeueVideoPacket(function (packet) {
+            callback();
+        });
+    }
+
+    discardAudio(callback) {
+        this.demuxer.dequeueAudioPacket(function (packet) {
+            callback();
+        });
+    }
+
+    flush(callback) {
+        this.flushIter++;
+        this.demuxer.flush(callback);
+    }
+
+    getKeypointOffset(timeSeconds, callback) {
+        this.demuxer.getKeypointOffset(timeSeconds, callback);
+    }
+
+    seekToKeypoint(timeSeconds, callback) {
+        this.demuxer.seekToKeypoint(timeSeconds, flushSafe(callback));
+    }
+
+    /*
+     * Notify demuxer that scrubbing is complete, temp hack for now
+     * Change this to scrub.
+     */
+    seekEnd() {
+        this.demuxer.onScrubEnd();
+    }
+    // Wrapper for callbacks to drop them after a flush
+    flushSafe(func) {
+        var savedFlushIter = this.flushIter;
+        return function (arg) {
+            if (this.flushIter <= savedFlushIter) {
+                func(arg);
+            }
+        }.bind(this);
+    }
+}
 
 module.exports = OGVWrapperCodec;
