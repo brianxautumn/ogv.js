@@ -59,7 +59,7 @@ class OGVDemuxerWebM {
 
         Object.defineProperty(this, 'duration', {
             get: function () {
-                if(this.segmentInfo.duration < 0)
+                if (this.segmentInfo.duration < 0)
                     return -1;
                 return this.segmentInfo.duration / 1000;// / 1000000000.0; ;
             }
@@ -83,7 +83,7 @@ class OGVDemuxerWebM {
 
 
         Object.defineProperty(this, 'audioFormat', {
-            get: function () {                  
+            get: function () {
                 var channels;
                 var rate;
                 for (var i in this.tracks.trackEntries) {
@@ -103,8 +103,9 @@ class OGVDemuxerWebM {
                 };
             }
         });
-        
+
         Object.defineProperty(this, 'videoFormat', {
+            //in case multiple video tracks? maybe make single track since probably slower to loop
             get: function () {
                 var tempTrack;
                 for (var i in this.tracks.trackEntries) {
@@ -114,19 +115,19 @@ class OGVDemuxerWebM {
                         break;
                     }
                 }
-
+                var fps = 0;//For now?
                 return {
-                    frameWidth: tempTrack.width,
-                    frameHeight: tempTrack.height,
-                    hdec: 1,
-                    vdec: 1,
-                    fps: 0,
-                    picWidth: tempTrack.width - tempTrack.pixelCropLeft - tempTrack.pixelCropRight,
-                    picHeight: tempTrack.height - tempTrack.pixelCropTop - tempTrack.pixelCropBottom,
-                    picX: tempTrack.pixelCropLeft,
-                    picY: tempTrack.pixelCropTop,
+                    width: tempTrack.width,
+                    height: tempTrack.height,
+                    chromaWidth: tempTrack.width >> 1,
+                    chromaHeight: tempTrack.height >> 1,
+                    cropLeft: tempTrack.pixelCropLeft,
+                    cropTop: tempTrack.pixelCropTop,
+                    cropWidth: tempTrack.width - tempTrack.pixelCropLeft - tempTrack.pixelCropRight,
+                    cropHeight: tempTrack.height - tempTrack.pixelCropTop - tempTrack.pixelCropBottom,
                     displayWidth: tempTrack.displayWidth,
-                    displayHeight: tempTrack.displayHeight
+                    displayHeight: tempTrack.displayHeight,
+                    fps: fps
                 };
             }
         });
@@ -271,11 +272,11 @@ class OGVDemuxerWebM {
     }
 
     process(callback) {
-        
+
         var start = getTimestamp();
         var status = false;
-  
-        
+
+
         //this.processing = true;
 
         switch (this.state) {
@@ -305,7 +306,7 @@ class OGVDemuxerWebM {
         } else {
             result = 0;
         }
-        
+
         //console.info("processing return : " + result);
         callback(!!result);
     }
@@ -361,24 +362,24 @@ class OGVDemuxerWebM {
                     break;
 
                 case 0x1F43B675: //Cluster
-                    if (!this.currentCluster){
-                        var metaWasLoaded = this.loadedMetadata; 
+                    if (!this.currentCluster) {
+                        var metaWasLoaded = this.loadedMetadata;
                         this.currentCluster = new Cluster(this.currentElement, this.dataInterface, this);
-                        if(this.loadedMetadata && !metaWasLoaded)
+                        if (this.loadedMetadata && !metaWasLoaded)
                             return true;
                     }
                     status = this.currentCluster.load();
-                    if (!this.currentCluster.loaded){
-                       return status;                      
+                    if (!this.currentCluster.loaded) {
+                        return status;
                     }
-                        
+
                     //this.clusters.push(this.currentCluster); //TODO: Don't overwrite this, make id's to keep track or something
                     this.currentCluster = null;
                     break;
-                    
+
                 case 0x1C53BB6B: //Cues
                     if (!this.cues)
-                        this.cues = new Cues(this.currentElement, this.dataInterface , this);
+                        this.cues = new Cues(this.currentElement, this.dataInterface, this);
                     this.cues.load();
                     if (!this.cues.loaded)
                         return false;
@@ -533,7 +534,7 @@ class OGVDemuxerWebM {
 
     dequeueAudioPacket(callback) {
         //console.warn("Dequeing audio");
-        
+
         if (this.audioPackets.length) {
             var packet = this.audioPackets.shift().data;
             callback(packet);
@@ -547,6 +548,8 @@ class OGVDemuxerWebM {
      * @param {function} callback after packet removal complete
      */
     dequeueVideoPacket(callback) {
+        //console.warn(this);
+        //throw "STOP";
         if (this.videoPackets.length) {
             var packet = this.videoPackets.shift().data;
             callback(packet);
@@ -565,21 +568,21 @@ class OGVDemuxerWebM {
     flush(callback) {
         console.error("flushing");
         if (!this.isSeeking) {
-            
+
             this.audioPackets = [];
             this.videoPackets = [];
             this.dataInterface.flush();
-            this.currentElement = null; 
+            this.currentElement = null;
         }
-           
-        
+
+
         //Note: was wrapped in a time function but the callback doesnt seem to take that param
-         
+
         //console.log(this);
         //throw "TEST";
         callback();
     }
-    
+
     /**
      * Depreciated, don't use!
      * @param {number} timeSeconds
@@ -587,11 +590,11 @@ class OGVDemuxerWebM {
      */
     getKeypointOffset(timeSeconds, callback) {
         var offset = this.time(function () {
-            
+
             return -1; // not used
-            
+
         }.bind(this));
-        
+
         callback(offset);
     }
 
@@ -601,7 +604,7 @@ class OGVDemuxerWebM {
      */
     seekToKeypoint(timeSeconds, callback) {
         var ret = this.time(function () {
-            
+
             /*
              * idea: Use to seek directly to point
              * -check if cues loaded
@@ -613,45 +616,45 @@ class OGVDemuxerWebM {
              * -continue loading as usual
              * 
              */
-            
-            
+
+
             //Don't pay attention to rest for now
             return 0;
             //}
-            if(!this.isSeeking){
+            if (!this.isSeeking) {
                 console.warn("seek already initialized");
                 return 1;
             }
-            
+
             this.isSeeking = true;
             this.tempSeekPosition = timeSeconds;
             //seek to time in seconds * 1000
-            console.warn("seeking to " + timeSeconds*1000);
+            console.warn("seeking to " + timeSeconds * 1000);
             //if the cues are not loaded, look in the seek head
-            if(!this.cuesLoaded){
+            if (!this.cuesLoaded) {
                 console.warn(this.segment.dataOffset);
-                
+
                 var length = this.seekHead.entries.length;
                 var entries = this.seekHead.entries;
                 console.warn(this.seekHead);
                 var seekOffset;
                 //Todo : make this less messy
-                for (var i = 0; i < length ; i ++){
-                    if(entries[i].seekId === 0x1C53BB6B) // cues
-                        seekOffset =  entries[i].seekPosition + this.segment.dataOffset; // its the offset from data offset
+                for (var i = 0; i < length; i++) {
+                    if (entries[i].seekId === 0x1C53BB6B) // cues
+                        seekOffset = entries[i].seekPosition + this.segment.dataOffset; // its the offset from data offset
                 }
                 this.dataInterface.offset = seekOffset;
                 this.onseek(seekOffset);
-                
-                
+
+
             }
-            
+
             return 1; // always return 1?
         }.bind(this));
 
         callback(!!ret);
     }
-    
+
     /**
      * Immedietly seek to position, used for restarting stream or when switching resolutions.
      * I think this might be the fast seek
@@ -661,7 +664,7 @@ class OGVDemuxerWebM {
     seekTo(timeSeconds, callback) {
 
     }
-    
+
     /**
      * If cues are not yet loaded at this point (should have been at least started to load)
      * Save the desired location anyway, on the next process call when the cues are loaded jump to it
@@ -669,33 +672,33 @@ class OGVDemuxerWebM {
      * @param {function} callback
      * When done scrubbing, reinitialize the stream here.
      */
-    onScrubEnd(timeSeconds, callback){
+    onScrubEnd(timeSeconds, callback) {
         console.warn("End seek triggered");
-     
-            //should flush before restarting
-            var seekOffset = 4452; //hardcoded testing
-            //this.dataInterface.offset = seekOffset;
-            this.isSeeking = false;
-            this.onseek(seekOffset);
-            console.log(this);
+
+        //should flush before restarting
+        var seekOffset = 4452; //hardcoded testing
+        //this.dataInterface.offset = seekOffset;
+        this.isSeeking = false;
+        this.onseek(seekOffset);
+        console.log(this);
     }
-    
+
     /**
      * Possibly use this to initialize cues if not loaded, can be called from onScrub or seekTo
      * Send seek request to cues, then make it keep reading bytes and waiting until cues are loaded
      * @returns {undefined}
      */
-    initCues(){
-        
+    initCues() {
+
     }
-    
+
     /*
      * Trigger the beginnign of a scrub event
      */
-    scrubStart(timeSeconds, callback){
+    scrubStart(timeSeconds, callback) {
         console.log("scrub start");
     }
-    
+
     /**
      * Called when the user drags the slider, can init the seek loading.
      * Use this for scrubbing, can have a different preview algorithm
@@ -703,26 +706,26 @@ class OGVDemuxerWebM {
      * @param {number} timeSeconds
      * @param {function} callback
      */
-    onScrub(timeSeconds, callback){
+    onScrub(timeSeconds, callback) {
         console.log("scrubing");
     }
-    
+
     /*
      * Finish the scrub and reinit stream here
      * @param {number} timeSeconds
      * @returns {Number}
      */
-    scrubEnd(timeSeconds, callback){
+    scrubEnd(timeSeconds, callback) {
         console.warn("scrub end ");
     }
-    
+
     /**
      * Get the offset based off the seconds, probably use binary search and have to parse the keypoints to numbers
      * @param {number} timeSeconds
      * @returns {number} offset in bytes relative to cluster, or file, doesnt matter since we save the cluster offset anyway.
      */
-    calculateKeypointOffset(timeSeconds){
-        
+    calculateKeypointOffset(timeSeconds) {
+
     }
 
 }
