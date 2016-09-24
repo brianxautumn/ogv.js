@@ -263,7 +263,7 @@ class OGVDemuxerWebM {
 
     receiveInput(data, callback) {
         var ret = this.time(function () {
-            console.log("got input");
+            //console.log("got input");
             this.dataInterface.recieveInput(data);
         }.bind(this));
         callback();
@@ -306,7 +306,7 @@ class OGVDemuxerWebM {
             result = 0;
         }
         
-        console.info("processing return : " + result);
+        //console.info("processing return : " + result);
         callback(!!result);
     }
 
@@ -712,7 +712,7 @@ class OGVDemuxerWebM {
      * @param {number} timeSeconds
      * @returns {Number}
      */
-    onScrubEnd(timeSeconds, callback){
+    scrubEnd(timeSeconds, callback){
         console.warn("scrub end ");
     }
     

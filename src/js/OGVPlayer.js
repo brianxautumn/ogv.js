@@ -1726,6 +1726,16 @@ var OGVPlayer = function(options) {
             console.log("player scrub start");
             console.warn(codec);
         };
+        
+        self.onScrub = function(){
+            console.log("player on scrub");
+            console.warn(codec);
+        };
+        
+        self.scrubEnd = function(){
+            console.log("player scrub end");
+            console.warn(codec);
+        };
 
 	/**
 	 * HTMLMediaElement src property

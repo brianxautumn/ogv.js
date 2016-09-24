@@ -1529,7 +1529,8 @@
 						dx = event.clientX - initialThumbX,
 						fraction = clamp(initialThumbFraction + dx / bar.offsetWidth);
 					seekTarget = fraction * player.duration;
-					player.currentTime = seekTarget;
+					//player.currentTime = seekTarget;
+                                        player.onScrub();
 					updateProgress();
 					event.preventDefault();
 				};
@@ -1540,7 +1541,8 @@
 						fraction = clamp(initialThumbFraction + dx / bar.offsetWidth);
 					seekTarget = fraction * player.duration;
 					thumbSeeking = false;
-					player.currentTime = seekTarget;
+					//player.currentTime = seekTarget;
+                                        player.scrubEnd();
                                         //player.seekEnd(); //Need something like this
 					updateProgress();
 

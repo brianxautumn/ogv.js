@@ -29,8 +29,8 @@ class OGVWrapperCodec {
         this.suffix = '?version=' + encodeURIComponent(__OGV_FULL_VERSION__);
         this.base = (typeof options.base === 'string') ? (options.base + '/') : '';
         this.type = (typeof options.type === 'string') ? options.type : 'video/ogg';
-        this.processing = false,
-                this.demuxer = null;
+        this.processing = false;
+        this.demuxer = null;
         this.videoDecoder = null;
         this.audioDecoder = null;
         this.flushIter = 0;
@@ -180,37 +180,38 @@ class OGVWrapperCodec {
         /**
          * Temp hack just to load the test javascript demuxer, need a better loader
          */
-        /*
-         if(demuxerClassName === 'OGVDemuxerWebM'){
-         console.info("loading javascript demux");
-         demuxer = new OGVDemuxerWebM();
-         demuxer.onseek = function(offset) {
-         if (this.onseek) {
-         this.onseek(offset);
-         }
-         };
-         window.demuxer = demuxer;//testing only
-         demuxer.init(function() {
-         processing = false;
-         callback();
-         });
-         
-         }else{
-         */
-        OGVLoader.loadClass(this.demuxerClassName, function (demuxerClass) {
-            this.demuxer = new demuxerClass();
+
+        if (this.demuxerClassName === 'OGVDemuxerWebM') {
+            console.info("loading javascript demux");
+            this.demuxer = new OGVDemuxerWebM();
             this.demuxer.onseek = function (offset) {
                 if (this.onseek) {
                     this.onseek(offset);
                 }
             }.bind(this);
+            //window.demuxer = demuxer;//testing only
             this.demuxer.init(function () {
                 this.processing = false;
                 callback();
             }.bind(this));
-        }.bind(this));
-        //}
 
+        } else {
+
+            OGVLoader.loadClass(this.demuxerClassName, function (demuxerClass) {
+                this.demuxer = new demuxerClass();
+                this.demuxer.onseek = function (offset) {
+                    if (this.onseek) {
+                        this.onseek(offset);
+                    }
+                }.bind(this);
+                this.demuxer.init(function () {
+                    this.processing = false;
+                    callback();
+                }.bind(this));
+            }.bind(this));
+        }
+    
+        console.log(this);
     }
 
     close() {
@@ -444,7 +445,7 @@ class OGVWrapperCodec {
     }
 
     seekToKeypoint(timeSeconds, callback) {
-        this.demuxer.seekToKeypoint(timeSeconds, flushSafe(callback));
+        this.demuxer.seekToKeypoint(timeSeconds, this.flushSafe(callback));
     }
 
     /*
