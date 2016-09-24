@@ -661,16 +661,6 @@ class OGVDemuxerWebM {
     seekTo(timeSeconds, callback) {
 
     }
-
-    /**
-     * Called when the user drags the slider, can init the seek loading.
-     * Use this for scrubbing, can have a different preview algorithm
-     * check if cues loaded, if not do cues init
-     * @param {number} timeSeconds
-     * @param {function} callback
-     */
-    onScrub(timeSeconds, callback){
-    }
     
     /**
      * If cues are not yet loaded at this point (should have been at least started to load)
@@ -696,6 +686,32 @@ class OGVDemuxerWebM {
      * @returns {undefined}
      */
     initCues(){
+        
+    }
+    
+    /*
+     * Trigger the beginnign of a scrub event
+     */
+    onScrubStart(timeSeconds, callback){
+        
+    }
+    
+    /**
+     * Called when the user drags the slider, can init the seek loading.
+     * Use this for scrubbing, can have a different preview algorithm
+     * check if cues loaded, if not do cues init
+     * @param {number} timeSeconds
+     * @param {function} callback
+     */
+    onScrub(timeSeconds, callback){
+    }
+    
+    /*
+     * Finish the scrub and reinit stream here
+     * @param {number} timeSeconds
+     * @returns {Number}
+     */
+    onScrubEnd(timeSeconds, callback){
         
     }
     
